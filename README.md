@@ -15,12 +15,13 @@ The dataset we will be lookng at is found in the [airway](https://bioconductor.o
 
 If you want to look at how to plot top enriched gene sets in R, [this lesson](https://hbctraining.github.io/Training-modules/Tidyverse_ggplot2/lessons/03_ggplot2.html) by the HBC walks through the plotting steps.
 
-**To continue trying out other tools, save your ranked gene list as:**
+Each of the following online tools requires at least a gene list as input, but all of the below tools have slightly different inputs. We can save the gene table with:
 
 ```r
-write.csv(rowData(airSE)[,4], "../data/airwayDEgenes.csv")
+write.csv(rowData(airSE), "../data/airwayDEgenes.csv")
 ```
 
+But we will need to figure out what exactly each tools takes as input.
 ## Enrichment Analyses in Python
 
 Python is less popular for enrichment analyses than R or standalone software. However, recently a research group released the [GSEApy](https://academic.oup.com/bioinformatics/article/39/1/btac757/6847088) [package](https://gseapy.readthedocs.io/en/latest/index.html). 
