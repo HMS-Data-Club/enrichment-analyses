@@ -1,0 +1,286 @@
+# Functional enrichment analysis
+
+```{r, include = FALSE}
+library(knitr)
+opts_chunk$set(out.width = "100%", cache = TRUE)
+options(repos = c(CRAN = 'https://cloud.r-project.org')) 
+```
+
+## Where does it all come from?
+
+Test whether known biological functions or processes are over-represented (= enriched) in an experimentally-derived gene list, e.g. a list of differentially expressed (DE) genes. See [Goeman and Buehlmann, 2007](https://doi.org/10.1093/bioinformatics/btm051) for a critical review.
+
+Example: Transcriptomic study, in which 12,671 genes have been tested for differential expression between two sample conditions and 529 genes were found DE.
+
+Among the DE genes, 28 are annotated to a specific functional gene set, which contains in total 170 genes. This setup corresponds to a 2x2 contingency table,
+
+```{R}
+deTable <-
+     matrix(c(28, 142, 501, 12000),
+            nrow = 2,
+            dimnames = list(c("DE", "Not.DE"),
+                            c("In.gene.set", "Not.in.gene.set")))
+deTable
+```
+
+where the overlap of 28 genes can be assessed based on the hypergeometric distribution. This corresponds to a one-sided version of Fisher's exact test, yielding here a significant enrichment.
+
+```{R}
+fisher.test(deTable, alternative = "greater")
+```
+This basic principle is at the foundation of major public and commercial enrichment tools such as [DAVID](https://david.ncifcrf.gov/) and [Pathway Studio](https://www.pathwaystudio.com).
+
+
+## Gene expression-based enrichment analysis
+
+The [EnrichmentBrowser](http://bioconductor.org/packages/EnrichmentBrowser) package implements an analysis pipeline for high-throughput gene expression data as measured with microarrays and RNA-seq. In a workflow-like manner, the package brings together a selection of established Bioconductor packages for gene expression data analysis. It integrates a wide range of gene set enrichment analysis methods and facilitates combination and exploration of results across methods.
+
+![EnrichmentBrowser workflow summary](../img/enrichmentWorkflow.png)
+
+
+```{R, message = FALSE}
+library(EnrichmentBrowser)
+```
+
+Further information can be found in the [vignette](http://www.bioconductor.org/packages/release/bioc/vignettes/EnrichmentBrowser/inst/doc/EnrichmentBrowser.pdf) and [publication](https://doi.org/10.1186/s12859-016-0884-1).
+
+## Data types
+
+For RNA-seq data, we consider transcriptome profiles of four primary human airway smooth muscle cell lines in two conditions: control and treatment with dexamethasone [Himes et al., 2014](https://doi.org/10.1371/journal.pone.0099625).
+
+Load the [airway](http://bioconductor.org/packages/airway) dataset
+
+```{R}
+library(airway)
+data(airway)
+```
+
+For further analysis, we only keep genes that are annotated to an ENSEMBL gene ID. 
+
+```{R}
+airSE <- airway[grep("^ENSG", names(airway)), ]
+dim(airSE)
+```
+
+```{R}
+assay(airSE)[1:4,1:4]
+```
+
+## Differential expression analysis
+
+The EnrichmentBrowser incorporates established functionality from the [limma](http://bioconductor.org/packages/limma) package for differential expression analysis. This involves the `voom` transformation when applied to RNA-seq data. Alternatively, differential expression analysis for RNA-seq data can also be carried out based on the negative binomial distribution with [edgeR](http://bioconductor.org/packages/edgeR) and [DESeq2](http://bioconductor.org/packages/DESeq2).
+
+This can be performed using the function `EnrichmentBrowser::deAna` and assumes some standardized variable names:
+
+-   **GROUP** defines the sample groups being contrasted,
+-   **BLOCK** defines paired samples or sample blocks, as e.g. for batch effects.
+
+For more information on experimental design, see the [limma user's guide](https://www.bioconductor.org/packages/devel/bioc/vignettes/limma/inst/doc/usersguide.pdf), chapter 9.
+
+For the airway dataset, it indicates whether the cell lines have been treated with dexamethasone (1) or not (0).
+
+**Task**: Add a `colData` column named `GROUP` to the `airSE`. This column should be a binary vector which indicates wether the cell lines have been treated with dexamethasone (1) or not (0).
+
+```{R, echo = FALSE}
+airSE$GROUP <- ifelse(airSE$dex == "trt", 1, 0)
+```
+
+Paired samples, or in general sample batches/blocks, can be defined via a `BLOCK` column in the `colData` slot. For the airway dataset, the sample blocks correspond to the four different cell lines.
+
+```{R}
+airSE$BLOCK <- airway$cell
+table(airSE$BLOCK)
+```
+
+For RNA-seq data, the `deAna` function can be used to carry out differential expression analysis between the two groups either based on functionality from *limma* (that includes the `voom` transformation), or alternatively, the frequently used *edgeR* or *DESeq2* package. Here, we use the analysis based on *edgeR*.
+
+```{R}
+airSE <- deAna(airSE, de.method = "edgeR")
+```
+
+```{R}
+rowData(airSE)
+```
+
+*Exercise:* Compare the number of differentially expressed genes as obtained on the `airSE` with `limma/voom`, `edgeR`, and `DESeq2`.
+
+nrDE \<- function(se, de.method) { message(de.method) se \<- deAna(se, de.method = de.method) nr.de \<- sum(rowData(se)\$ADJ.PVAL \< 0.05) return(nr.de) }
+
+nrDE(airSE, "limma") de.methods \<- c("limma", "edgeR", "DESeq2") sapply(de.methods, nrDE, se = airSE)
+
+## Gene sets
+
+We are now interested in whether pre-defined sets of genes that are known to work together, e.g. as defined in the [Gene Ontology](http://www.geneontology.org) or the [KEGG](http://www.genome.jp/kegg) pathway annotation, are coordinately differentially expressed.
+
+**Gene sets, pathways & regulatory networks**
+
+Gene sets are simple lists of usually functionally related genes without further specification of relationships between genes.
+
+Pathways can be interpreted as specific gene sets, typically representing a group of genes that work together in a biological process. Pathways are commonly divided in metabolic and signaling pathways. Metabolic pathways such as glycolysis represent biochemical substrate conversions by specific enzymes. Signaling pathways such as the MAPK signaling pathway describe signal transduction cascades from receptor proteins to transcription factors, resulting in activation or inhibition of specific target genes.
+
+Gene regulatory networks describe the interplay and effects of regulatory factors (such as transcription factors and microRNAs) on the expression of their target genes.
+
+**Resources**
+
+[GO](http://www.geneontology.org) and [KEGG](http://www.genome.jp/kegg) annotations are most frequently used for the enrichment analysis of functional gene sets. Despite an increasing number of gene set and pathway databases, they are typically the first choice due to their long-standing curation and availability for a wide range of species.
+
+*GO*: The Gene Ontology (GO) consists of three major sub-ontologies that classify gene products according to molecular function (MF), biological process (BP) and cellular component (CC). Each ontology consists of GO terms that define MFs, BPs or CCs to which specific genes are annotated. The terms are organized in a directed acyclic graph, where edges between the terms represent relationships of different types. They relate the terms according to a parent-child scheme, i.e. parent terms denote more general entities, whereas child terms represent more specific entities.
+
+*KEGG*: The Kyoto Encyclopedia of Genes and Genomes (KEGG) is a collection of manually drawn pathway maps representing molecular interaction and reaction networks. These pathways cover a wide range of biochemical processes that can be divided in 7 broad categories: metabolism, genetic and environmental information processing, cellular processes, organismal systems, human diseases, and drug development. Metabolism and drug development pathways differ from pathways of the other 5 categories by illustrating reactions between chemical compounds. Pathways of the other 5 categories illustrate molecular interactions between genes and gene products.
+
+The function `getGenesets` can be used to download gene sets from databases such as GO and KEGG. Here, we use the function to download all KEGG pathways for a chosen organism (here: *Homo sapiens*) as gene sets.
+
+```{R}
+kegg.gs <- getGenesets(org = "hsa", db = "kegg")
+kegg.gs[1:2]
+```
+
+Analogously, the function `getGenesets` can be used to retrieve GO terms of a selected ontology (here: biological process, BP) as defined in the *GO.db* annotation package.
+
+```{R, message = FALSE}
+go.gs <- getGenesets(org = "hsa", db = "go", onto = "BP", mode = "GO.db")
+go.gs[1:2]
+```
+
+If provided a file, the function `getGenesets` parses user-defined gene sets from GMT file format. Here, we use this functionality for reading a list of already downloaded KEGG gene sets for *Homo sapiens* containing NCBI Entrez Gene IDs.
+
+```{R}
+data.dir <- system.file("extdata", package = "EnrichmentBrowser")
+gmt.file <- file.path(data.dir, "hsa_kegg_gs.gmt")
+hsa.gs <- getGenesets(gmt.file)
+hsa.gs[1:2]
+```
+
+Note #1: Gene set collections for 11 different species from the\
+[Molecular Signatures Database (MSigDB)](http://software.broadinstitute.org/gsea/msigdb/collections.jsp) can be obtained using `getGenesets` with `db = "msigdb"`. For example, the *H*allmark gene set collection can be obtained from MSigDB via:
+
+```{r msigdb, message = FALSE}
+hall.gs <- getGenesets(org = "hsa", db = "msigdb", cat = "H") 
+hall.gs[1:2]
+```
+
+Note #2: The `idMap` function can be used to map gene sets from NCBI Entrez Gene IDs to other common gene ID types such as ENSEMBL gene IDs or HGNC symbols.\\ For example, to map the gene sets from Entrez Gene IDs to gene symbols:
+
+```{r idmapGS}
+hsa.gs.sym <- idMap(hsa.gs, org = "hsa", from = "ENTREZID", to = "SYMBOL")
+hsa.gs.sym[1:2]
+```
+
+## GO/KEGG overrepresentation analysis
+
+A variety of gene set analysis methods have been proposed [Khatri et al., 2012](https://doi.org/10.1371/journal.pcbi.1002375). The most basic, yet frequently used, method is the over-representation analysis (ORA) with gene sets defined according to GO or KEGG.
+
+-   Overrepresentation analysis (ORA), testing whether a gene set contains disproportional many genes of significant expression change. ORA tests the overlap between DE genes and genes in a gene set based on the hypergeometric distribution.
+
+As ORA works on the list of DE genes and not the actual expression values, it can be straightforward applied to RNA-seq data. However, as the gene sets here contain NCBI Entrez gene IDs and the airway dataset contains ENSEMBL gene ids, we first map the airway dataset to Entrez IDs.
+
+```{r}
+airSE <- idMap(airSE, org = "hsa", from = "ENSEMBL", to = "ENTREZID")
+```
+
+```{r}
+ora.air <- sbea(method = "ora", se = airSE, gs = go.gs, perm = 0)
+gsRanking(ora.air)
+```
+
+Such a ranked list is the standard output of most existing enrichment tools. Using the `eaBrowse` function creates a HTML summary from which each gene set can be inspected in more detail.
+
+```{R, message=FALSE}
+eaBrowse(ora.air, nr.show = 5)
+```
+
+The resulting summary page includes for each significant gene set
+
+-   a gene report, which lists all genes of a set along with fold change and DE $p$-value (click on links in column `NR.GENES`),
+-   interactive overview plots such as heatmap and volcano plot (column `SET.VIEW`, supports mouse-over and click-on),
+-   for KEGG pathways: highlighting of differentially expressed genes on the pathway maps (column `PATH.VIEW`, supports mouse-over and click-on).
+
+Note #1: [Young et al., 2010](https://doi.org/10.1186/gb-2010-11-2-r14), have reported biased results for ORA on RNA-seq data due to over-detection of differential expression for long and highly expressed transcripts. The [goseq](http://bioconductor.org/packages/goseq) package and `limma::goana` implement possibilities to adjust ORA for gene length and abundance bias.
+
+Note #2: Independent of the expression data type under investigation, overlap between gene sets can result in redundant findings. This is well-documented for GO (parent-child structure, [Rhee et al., 2008](https://doi.org/10.1038/nrg2363)) and KEGG (pathway overlap/crosstalk, [Donato et al., 2013](https://doi.org/10.1101/gr.153551.112)). The [topGO](http://bioconductor.org/packages/topGO) package (explicitly designed for GO) and [mgsa](http://bioconductor.org/packages/mgsa) (applicable to arbitrary gene set definitions) implement modifications of ORA to account for such redundancies.
+
+**Exercise**
+
+Carry out a GO overrepresentation analysis for the `airSE` based on the molecular function (MF) ontology. How many significant gene sets do you observe in each case?
+
+## Functional class scoring & permutation testing
+
+A major limitation of ORA is that it restricts analysis to DE genes, excluding genes not satisfying the chosen significance threshold (typically the vast majority).
+
+This is resolved by gene set enrichment analysis (GSEA), which scores the tendency of gene set members to appear rather at the top or bottom of the ranked list of all measured genes [Subramanian et al., 2005](https://doi.org/10.1073/pnas.0506580102).
+
+As GSEA's permutation procedure involves re-computation of per-gene DE statistics, adaptations are necessary for RNA-seq. When analyzing RNA-seq datasets with expression values given as logTPMs (or logRPKMs / logFPKMs), the available set-based enrichment methods can be applied as for microarray data. However, when given raw read counts as for the airway dataset, we recommend to first apply a variance-stabilizing transformation such as `voom` to arrive at library-size normalized logCPMs.
+
+```{r}
+#| eval: false
+airSE <- normalize(airSE, norm.method = "vst")
+gsea.air <- sbea(method = "gsea", se = airSE, gs = go.gs)  
+```
+A selection of additional methods is also available:
+
+```{r}
+sbeaMethods()
+```
+## Further Reading
+Although gene set enrichment methods have been primarily developed and applied on transcriptomic data, they have recently been modified, extended and applied also in other fields of genomic and biomedical research. This includes novel approaches for functional enrichment analysis of proteomic and metabolomic data as well as genomic regions and disease phenotypes, [Lavallee and Yates, 2016](https://doi.org/10.1002/0471250953.bi1328s53), [Chagoyen et al., 2016](https://doi.org/10.1007/978-1-4939-3572-7_20), [McLean et al., 2010](https://doi.org/10.1038/nbt.1630), [Ried et al., 2012](https://doi.org/10.1002/gepi.21617).
+
+The statistical significance of the enrichment score (ES) of a gene set is assessed via sample permutation, i.e. (1) sample labels (= group assignment) are shuffled, (2) per-gene DE statistics are recomputed, and (3) the enrichment score is recomputed. Repeating this procedure many times allows to determine the empirical distribution of the enrichment score and to compare the observed enrichment score against it. Here, we carry out GSEA with 1000 permutations.
+
+Gene set enrichment analysis (GSEA), testing whether genes of a gene set accumulate at the top or bottom of the full gene vector ordered by direction and magnitude of expression change [Subramanian et al., 2005](https://doi.org/10.1073/pnas.0506580102)
+
+However, the term *gene set enrichment analysis* nowadays subsumes a general strategy implemented by a wide range of methods [Huang et al., 2009](https://doi.org/10.1093/nar/gkn923). Those methods have in common the same goal, although approach and statistical model can vary substantially [Goeman and Buehlmann, 2007](https://doi.org/10.1093/bioinformatics/btm051), [Khatri et al., 2012](https://doi.org/10.1371/journal.pcbi.1002375).
+
+To better distinguish from the specific method, some authors use the term *gene set analysis* to denote the general strategy. However, there is also a specific method from [Efron and Tibshirani, 2007](https://doi.org/10.1214/07-AOAS101) of this name.
+
+### Network-based enrichment analysis
+
+Having found gene sets that show enrichment for differential expression, we are now interested whether these findings can be supported by known regulatory interactions.
+
+For example, we want to know whether transcription factors and their target genes are expressed in accordance to the connecting regulations (activation/inhibition). Such information is usually given in a gene regulatory network derived from specific experiments or compiled from the literature ([Geistlinger et al., 2013](https://doi.org/10.1093/nar/gkt631) for an example).
+
+There are well-studied processes and organisms for which comprehensive and well-annotated regulatory networks are available, e.g. the [RegulonDB](http://regulondb.ccg.unam.mx) for *E. coli* and [Yeastract](http://www.yeastract.com) for *S. cerevisiae*.
+
+However, there are also cases where such a network is missing or at least incomplete. A basic workaround is to compile a network from regulations in pathway databases such as KEGG.
+
+```{r}
+hsa.grn <- compileGRN(org = "hsa", db = "kegg")
+head(hsa.grn)
+```
+
+Signaling pathway impact analysis (SPIA) is a network-based enrichment analysis method, which is explicitly designed for KEGG signaling pathways [Tarca et al., 2009](https://doi.org/%2010.1093/bioinformatics/btn577). The method evaluates whether expression changes are propagated across the pathway topology in combination with ORA.
+
+```{r}
+#| eval: false
+spia.air <- nbea(method = "spia", se = airSE, gs = kegg.gs, grn = hsa.grn)
+gsRanking(spia.air)
+```
+
+More generally applicable is gene graph enrichment analysis (GGEA), which evaluates consistency of interactions in a given gene regulatory network with the observed expression data [Geistlinger et al., 2011](https://doi.org/10.1093/bioinformatics/btr228).
+
+```{r}
+#| eval: false
+ggea.air <- nbea(method = "ggea", se = airSE, gs = kegg.gs, grn = hsa.grn)
+gsRanking(ggea.air)
+```
+
+```{r}
+#| eval: false
+nbeaMethods()
+```
+
+Note #1: As network-based enrichment methods typically do not involve sample permutation but rather network permutation, thus avoiding DE re-computation, they can likewise be applied to RNA-seq data.
+
+Note #2: Given the various enrichment methods with individual benefits and limitations, combining multiple methods can be beneficial, e.g. combined application of a set-based and a network-based method. This has been shown to filter out spurious hits of individual methods and to reduce the outcome to gene sets accumulating evidence from different methods [Geistlinger et al., 2016](https://doi.org/10.1186/s12859-016-0884-1), [Alhamdoosh et al., 2017](https://doi.org/10.1093/bioinformatics/btw623).
+
+The function `combResults` implements the straightforward combination of results, thereby facilitating seamless comparison of results across methods. For demonstration, we use the ORA and GSEA results for the ALL dataset from the previous section:
+
+```{r}
+#| eval: false
+res.list <- list(ora.air, roast.air)
+comb.res <- combResults(res.list)
+gsRanking(comb.res)
+```
+
+---
+
+This workbook has been adapted from materials created by Ludwig Geistlinger. 

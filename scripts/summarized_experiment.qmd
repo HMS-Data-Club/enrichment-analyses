@@ -1,0 +1,108 @@
+# Working with summarized experimental data
+
+This section introduces another broadly useful package and data structure, the [SummarizedExperiment](https://bioconductor.org/packages/SummarizedExperiment) package and `SummarizedExperiment` object.
+
+![](../img/summarizedExperiment.png)
+
+The `SummarizedExperiment` object has matrix-like properties -- it has two dimensions and can be subset by 'rows' and 'columns'. The `assay()` data of a `SummarizedExperiment` experiment contains one or more matrix-like objects where rows represent features of interest (e.g., genes), columns represent samples, and elements of the matrix represent results of a genomic assay (e.g., counts of reads overlaps genes in each sample of an bulk RNA-seq differential expression assay.
+
+**Object construction**
+
+The `SummarizedExperiment` coordinates assays with (optional) descriptions of rows and columns. We start by reading in a simple `data.frame` describing 8 samples from an RNASeq experiment looking at dexamethasone treatment across 4 human smooth muscle cell lines; use `browseVignettes("airway")` for a more complete description of the experiment and data processing. Read the column data in using `file.choose()` and `read.csv()`.
+
+```{r, eval=FALSE}
+fname <- file.choose()  # airway_colData.csv
+fname
+```
+
+```{r, echo=FALSE}
+fname <- "../data/airway_colData.csv"
+```
+
+We want the first column the the data to be treated as row names (sample identifiers) in the `data.frame`, so `read.csv()` has an extra argument to indicate this.
+
+```{r}
+colData <- read.csv(fname, row.names = 1)
+head(colData)
+```
+
+The data are from the Short Read Archive, and the row names, `SampleName`, `Run`, `Experiment`, `Sampel`, and `BioSample` columns are classifications from the archive. Additional columns include:
+
+-   `cell`: the cell line used. There are four cell lines.
+-   `dex`: whether the sample was untreated, or treated with dexamethasone.
+-   `albut`: a second treatment, which we ignore
+-   `avgLength`: the sample-specific average length of the RNAseq reads estimated in the experiment.
+
+**Assay data**
+
+Now import the assay data from the file "airway_counts.csv"
+
+```{r, eval=FALSE}
+fname <- file.choose()  # airway_counts.csv
+fname
+```
+
+```{r, echo=FALSE}
+fname <- "../data/airway_counts.csv"
+```
+
+```{r}
+counts <- read.csv(fname, row.names=1)
+```
+
+Although the data are read as a `data.frame`, all columns are of the same type (integer-valued) and represent the same attribute; the data is really a `matrix` rather than `data.frame`, so we coerce to matrix using `as.matrix()`.
+
+```{r}
+counts <- as.matrix(counts)
+```
+
+We see the dimensions and first few rows of the counts matrix
+
+```{r}
+dim(counts)
+head(counts)
+```
+
+It's interesting to think about what the counts mean -- for ENSG00000000003, sample SRR1039508 had 679 reads that overlapped this gene, sample SRR1039509 had 448 reads, etc. Notice that for this gene there seems to be a consistent pattern -- within a cell line, the read counts in the untreated group are always larger than the read counts for the treated group. This and other basic observations from 'looking at' the data motivate many steps in a rigorous RNASeq differential expression analysis.
+
+**Creating a `SummarizedExperiment` object**
+
+We saw earlier that there was considerable value in tightly coupling the count of CpG islands overlapping each transcript with the `GRanges` describing the transcripts. We can anticipate that close coupling of the column data with the assay data will have similar benefits, e.g., reducing the chances of bookkeeping errors as we work with our data.
+
+Attach the [SummarizedExperiment](https://bioconductor.org/packages/SummarizedExperiment) library to our *R* session.
+
+```{r, message=FALSE}
+library("SummarizedExperiment")
+```
+
+Use the `SummarizedExperiment()` function to coordinate the assay and column data; this function uses row and column names to make sure the correct assay columns are described by the correct column data rows.
+
+```{r}
+se <- SummarizedExperiment(assay = list(count=counts), colData = colData)
+se
+```
+
+It is straight-forward to use `subset()` on `SummarizedExperiment` to create subsets of the data in a coordinated way. Remember that a `SummarizedExperiment` is conceptually two-dimensional (matrix-like), and in the example below we are subsetting on the second dimension.
+
+```{r}
+subset(se, , dex == "trt")
+```
+
+As with `GRanges`, there are accessors that extract data from the `SummarizedExperiment`. For instance, we can use `assay()` to extract the count matrix, and `colSums()` to calculate the library size (total number of reads overlapping genes in each sample).
+
+```{r}
+colSums(assay(se))
+```
+
+Note that library sizes differ by a factor of 2 from largest to smallest; how would this influence the interpretation of counts in individual cells of the assay data?
+
+As with `GRanges`, it might be useful to remember important computations in a way that is robust, e.g.,
+
+```{r}
+se$lib.size <- colSums(assay(se))
+colData(se)
+```
+
+---
+
+This workbook has been adapted from materials created by Ludwig Geistlinger. 
