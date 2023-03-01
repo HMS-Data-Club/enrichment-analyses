@@ -25,19 +25,7 @@ write.csv(rowData(airSE)[,4], "../data/airwayDEgenes.csv")
 
 Python is less popular for enrichment analyses than R or standalone software. However, recently a research group released the [GSEApy](https://academic.oup.com/bioinformatics/article/39/1/btac757/6847088) [package](https://gseapy.readthedocs.io/en/latest/index.html). 
 
-We can install `GSEApy` into our conda environmet (or make a new one). 
-
-```
-conda install -c bioconda gseapy
-```
-
-We can then try running GSEA in Python. Create a new script with the following imports:
-
-```
-import pandas as pd
-import gseapy as gp
-import matplotlib.pyplot as plt
-```
+However, this package appears to have some current stability issues so we will not be trying it today. 
 
 ## Standalone Tools
 
@@ -47,7 +35,11 @@ DAVID is a popular tool for enrichment analyses which runs in your web browser. 
 
 **GSEA**
 
-The GSEA sofware is a downloadable tool which is perhaps the most popular enrichment software for standard enrichment workflows. You can download and try it [here](https://www.gsea-msigdb.org/gsea/index.jsp).
+The GSEA sofware is a downloadable tool which is perhaps the most traditionally popular enrichment software for standard enrichment workflows. You can download and try it [here](https://www.gsea-msigdb.org/gsea/index.jsp).
+
+**Enrichr**
+
+[Enrichr](https://maayanlab.cloud/Enrichr/) is a newer browser-based tool which is increasing popular. `EnrichmentBrowser` actually allows you to access Enrichr programatically as well.  
 
 **Revigo**
 
@@ -55,7 +47,7 @@ Revigo is a great tool for post-processing your enrichment results. It helps ide
 
 ## Comparison
 
-Choose at least 2 of the above tools (R, Python, DAVID, or GSEA) and try them out on the airway dataset.
+Choose at least 2 of the above tools (R, Enrichr, DAVID, or GSEA) and try them out on the airway dataset.
 
 - Do you have access to the same collections of gene sets in each tool?
 - Are the results the same between the two?
